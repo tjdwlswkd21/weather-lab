@@ -10,15 +10,15 @@ LSTM 시계열 모델로 태양광 발전량을 예측하는 프로젝트입니�
 ```
 기상청 공공 API (data.go.kr)
       │
-      │  weather_public.py       API 호출 · 파싱
-      │  collect_weather_backfill.py   DB 저장
+      │  weather_public.py             API 호출 · 파싱
+      │  collect_weather_backfill.py   DB 저장  (db.py 사용)
       ▼
   MySQL DB ◄── collect_rp2040_modbus.py ◄── RP2040 센서 (Modbus RTU/TCP)
-  ├─ weather_hourly   (시간별 기상 데이터)
+  ├─ weather_hourly   (시간별 기상 데이터)       ※ pymysql 직접 사용
   └─ power_realtime   (시간별 발전량)
       │
       │  ml_shared.py   두 테이블 JOIN · MinMaxScaler · 시퀀스 생성
-      ▼
+      ▼                 ※ pymysql 직접 사용
   train_baseline.py   GBM 베이스라인 학습 → metrics_baseline.json
   lstm_train.py       LSTM 학습 → 베이스라인과 MAE/RMSE 비교
 ```
@@ -32,7 +32,7 @@ LSTM 시계열 모델로 태양광 발전량을 예측하는 프로젝트입니�
 | `weather_public.py` | 기상청 ASOS API 호출·파싱 라이브러리 |
 | `collect_weather_backfill.py` | 과거 N일 기상 데이터를 DB에 일괄 저장 |
 | `collect_rp2040_modbus.py` | RP2040 센서에서 Modbus RTU/TCP로 발전량 1초 주기 수집 |
-| `db.py` | MySQL 연결 · 저장 공통 함수 |
+| `db.py` | MySQL 연결 · 저장 함수 (`collect_weather_backfill.py`에서 사용) |
 | `ml_shared.py` | DB 조회, 정규화, 시퀀스 생성, 역정규화 공유 로직 |
 | `train_baseline.py` | HistGradientBoosting 베이스라인 학습 · 평가 |
 | `lstm_train.py` | LSTM(64) 모델 학습 · 평가 · 베이스라인 비교 |
