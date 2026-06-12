@@ -36,6 +36,7 @@ LSTM 시계열 모델로 태양광 발전량을 예측하는 프로젝트입니�
 | `ml_shared.py` | DB 조회, 정규화, 시퀀스 생성, 역정규화 공유 로직 |
 | `train_baseline.py` | HistGradientBoosting 베이스라인 학습 · 평가 |
 | `lstm_train.py` | LSTM(64) 모델 학습 · 평가 · 베이스라인 비교 |
+| `lstm_block_sim.html` | LSTM 동작 블록도 신호전송 시뮬레이션 (브라우저에서 바로 실행) |
 
 ---
 
@@ -118,4 +119,13 @@ uv run python train_baseline.py
 ```bash
 uv run python lstm_train.py
 ```
+
+### 7. 블록도 시뮬레이션
+
+`lstm_block_sim.html`을 브라우저에서 열면 LSTM 예측기의 전체 동작 흐름을 시각적으로 확인할 수 있습니다.
+
+- DB · 서버 없이 브라우저에서 바로 실행
+- Mermaid 블록도 — 입력 → 전처리 → LSTM → 예측 전체 흐름
+- SVG 애니메이션 — 신호가 각 블록을 통과하는 과정
+- Chart.js 그래프 — 단계별 신호 변환 (정규화 전후, 시퀀스, 예측 vs 실제)
 

@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LSTM 태양광 발전량 예측기 — 블록도 신호전송 시뮬레이션</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0d1117;
+      color: #e0e0e0;
+      padding: 28px 20px;
+    }
+    header { text-align: center; margin-bottom: 36px; }
+    header h1 { font-size: 1.7em; color: #58a6ff; letter-spacing: -0.3px; }
+    header p  { color: #8b949e; font-size: 0.88em; margin-top: 6px; }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 28px;
+    }
+    .card h2 {
+      font-size: 1em;
+      color: #58a6ff;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #30363d;
+    }
+    .card p.hint { color: #8b949e; font-size: 0.82em; margin-bottom: 14px; }
+
+    /* ── Mermaid ── */
+    .mermaid { display: flex; justify-content: center; overflow-x: auto; }
+
+    /* ── 시뮬레이션 ── */
+    #sim-wrap { overflow-x: auto; }
+    #sim-svg  { display: block; margin: 0 auto; }
+
+    .btn-row { text-align: center; margin: 14px 0; display: flex; justify-content: center; gap: 10px; }
+    .btn {
+      background: #238636; color: #fff;
+      border: none; border-radius: 8px;
+      padding: 9px 22px; cursor: pointer; font-size: 0.88em;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #2ea043; }
+    .btn.reset { background: #30363d; }
+    .btn.reset:hover { background: #444c56; }
+
+    #signal-panel {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-top: 16px;
+      min-height: 80px;
+    }
+    #sig-title { color: #58a6ff; font-weight: 700; font-size: 0.88em; margin-bottom: 8px; }
+    #sig-body  { font-family: 'Consolas', monospace; font-size: 0.83em; color: #7ee787; white-space: pre-line; line-height: 1.6; }
+
+    /* ── 차트 그리드 ── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 720px) { .chart-grid { grid-template-columns: 1fr; } }
+    .chart-box {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .chart-box h3 {
+      color: #8b949e;
+      font-size: 0.78em;
+      text-align: center;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>LSTM 태양광 발전량 예측기</h1>
+  <p>블록도 신호전송 시뮬레이션 &nbsp;|&nbsp; 기상 데이터 → 전처리 → LSTM → 예측 발전량</p>
+</header>
+
+<!-- ════ 섹션 1: 블록도 ════ -->
+<div class="card">
+  <h2>① 전체 동작 블록도</h2>
+  <div class="mermaid">
+flowchart LR
+    A["📥 기상 데이터 입력\n온도·습도·풍속\n일사량·강수량\n발전량·패널온도·패널습도\n8가지 특성 × 720시간"]
+    B["🔧 MinMaxScaler\n각 특성을\n0 ~ 1 범위로\n정규화"]
+    C["📦 시퀀스 생성\n과거 35 타임스텝 묶음\n입력 형태: 35 × 8"]
+    D["🧠 LSTM Layer\n64 units\n시계열 패턴 학습\n출력: 64차원 벡터 h_t"]
+    E["🔢 Dense Layer\n64 → 1\n스케일된 발전량 출력"]
+    F["📊 역정규화\n0~1 값을\n실제 kW 단위로 환산"]
+    G["⚡ 예측 발전량\npower_kw  kW"]
+
+    A --> B --> C --> D --> E --> F --> G
+
+    style A fill:#0d2340,stroke:#58a6ff,color:#cdd9e5
+    style B fill:#0d2818,stroke:#3fb950,color:#cdd9e5
+    style C fill:#2d1f00,stroke:#d29922,color:#cdd9e5
+    style D fill:#2d0f0f,stroke:#f85149,color:#cdd9e5
+    style E fill:#1f0d2d,stroke:#bc8cff,color:#cdd9e5
+    style F fill:#0d2825,stroke:#39d353,color:#cdd9e5
+    style G fill:#0d2820,stroke:#56d364,color:#cdd9e5
+  </div>
+</div>
+
+<!-- ════ 섹션 2: SVG 신호전송 시뮬레이션 ════ -->
+<div class="card">
+  <h2>② 신호전송 시뮬레이션</h2>
+  <p class="hint">신호(●)가 각 블록을 순서대로 통과하며 데이터가 어떻게 변환되는지 보여줍니다.</p>
+
+  <div class="btn-row">
+    <button class="btn" onclick="startSim()">▶ 시뮬레이션 시작</button>
+    <button class="btn reset" onclick="resetSim()">↺ 초기화</button>
+  </div>
+
+  <div id="sim-wrap">
+    <svg id="sim-svg" width="980" height="210" viewBox="0 0 980 210"></svg>
+  </div>
+
+  <div id="signal-panel">
+    <div id="sig-title">▶ 시뮬레이션 시작 버튼을 눌러주세요</div>
+    <div id="sig-body"></div>
+  </div>
+</div>
+
+<!-- ════ 섹션 3: 단계별 신호 변환 그래프 ════ -->
+<div class="card">
+  <h2>③ 단계별 신호 변환 그래프</h2>
+  <div class="chart-grid">
+    <div class="chart-box">
+      <h3>블록 1 → 2 &nbsp;|&nbsp; 원본 신호 vs MinMaxScaler 정규화 (72시간)</h3>
+      <canvas id="c-norm" height="180"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>블록 2 → 3 &nbsp;|&nbsp; LSTM 입력 시퀀스 (35 타임스텝 × 3 feature)</h3>
+      <canvas id="c-seq" height="180"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>블록 3 → 4 &nbsp;|&nbsp; LSTM hidden-state h_t 활성화 (16 unit 샘플)</h3>
+      <canvas id="c-hidden" height="180"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>블록 5 → 6 &nbsp;|&nbsp; 역정규화 후 — 예측 vs 실제 발전량 (168시간)</h3>
+      <canvas id="c-pred" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     JavaScript
+════════════════════════════════════════ -->
+<script>
+// ── Mermaid 초기화
+mermaid.initialize({ startOnLoad: true, theme: 'dark',
+  flowchart: { curve: 'basis', padding: 20, nodeSpacing: 40 } });
+
+// ──────────────────────────────────────────
+// 합성 데이터 (720 step, 24 h 주기)
+// ──────────────────────────────────────────
+const N = 720, SEQ = 35;
+
+function randn() {
+  let u, v;
+  do { u = Math.random(); } while (!u);
+  do { v = Math.random(); } while (!v);
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function minmax(arr) {
+  const mn = Math.min(...arr), mx = Math.max(...arr);
+  return { s: arr.map(v => (v - mn) / (mx - mn)), mn, mx };
+}
+
+const t     = Array.from({ length: N }, (_, i) => i);
+const solar = t.map(i => Math.max(0, Math.sin((i % 24 - 6) * Math.PI / 12)));
+const power = solar.map(s => Math.max(0, s * 5 + randn() * 0.3));
+const temp  = t.map(i => 20 + 8 * Math.sin(2 * Math.PI * i / 24) + randn());
+const sRad  = solar.map(s => s * 800 + randn() * 20);
+
+const pwMM  = minmax(power);
+const srMM  = minmax(sRad);
+const tpMM  = minmax(temp);
+
+// 합성 예측: 실제값에 부드러운 노이즈
+const predNorm = pwMM.s.map((v, i) =>
+  Math.max(0, Math.min(1, (i > 1 ? pwMM.s[i-1]*0.55 + v*0.4 : v) + (Math.random()-0.5)*0.04)));
+const predKw = predNorm.map(v => v*(pwMM.mx - pwMM.mn) + pwMM.mn);
+
+// ──────────────────────────────────────────
+// SVG 시뮬레이션
+// ──────────────────────────────────────────
+const BLOCKS = [
+  { lbl: '기상 데이터\n입력',       sub: '8 features × 720h',   c: '#58a6ff', bg: '#0d2340',
+    info: '블록 1 — 원본 기상 데이터 수신\n─────────────────────────\n온도        : 22.3 °C\n습도        : 61.4 %\n풍속        : 3.1 m/s\n일사량      : 680 W/m²\n강수량      : 0.0 mm\n발전량      : 3.2 kW\n패널 온도   : 41.5 °C\n패널 습도   : 58.2 %\n→ 총 8가지 특성 × 720시간 준비 완료' },
+  { lbl: 'MinMaxScaler\n정규화',    sub: '각 값 → [0, 1]',       c: '#3fb950', bg: '#0d2818',
+    info: '블록 2 — MinMaxScaler 정규화\n─────────────────────────\n22.3°C   →  0.71\n61.4%    →  0.43\n3.1 m/s  →  0.39\n680 W/m² →  0.85\n0.0 mm   →  0.00\n3.2 kW   →  0.64\n41.5°C   →  0.69\n58.2%    →  0.41\n→ 모든 feature 동일 스케일([0,1])로 통일' },
+  { lbl: '시퀀스 생성\n35 step',    sub: '(35, 8) 행렬',          c: '#d29922', bg: '#2d1f00',
+    info: '블록 3 — 시퀀스 생성\n─────────────────────────\n과거 35시간의 데이터를\n하나의 입력 행렬로 묶음\n\n형태: [35 타임스텝 × 8 특성]\n예) t-34 ~ t 시각의\n    기상 + 발전 이력 전체\n\n→ LSTM 이 시간 흐름을 학습할 수 있는\n  구조로 변환 완료' },
+  { lbl: 'LSTM Layer\n64 units',   sub: '시계열 패턴 학습',       c: '#f85149', bg: '#2d0f0f',
+    info: '블록 4 — LSTM 처리\n─────────────────────────\n35개 타임스텝을 순차적으로 처리\n각 스텝에서 중요 정보를 선택·기억\n\n내부 동작:\n  • Forget Gate  — 과거 기억 조절\n  • Input Gate   — 새 정보 수용량 조절\n  • Output Gate  — 출력 세기 조절\n\n출력: 64차원 특징 벡터 h_t\n[ 0.12, -0.34, 0.87, 0.05, 0.61 ... ]' },
+  { lbl: 'Dense Layer\n64 → 1',    sub: '발전량 예측값 출력',     c: '#bc8cff', bg: '#1f0d2d',
+    info: '블록 5 — Dense Layer\n─────────────────────────\n64차원 벡터를\n가중 합산 → 1개 값으로 압축\n\n수식: ŷ = W · h_t + b\n\n출력: 0.67\n(정규화된 발전량, 아직 kW 단위 아님)' },
+  { lbl: '역정규화\n→ 예측 kW',    sub: '최종 발전량 출력',       c: '#56d364', bg: '#0d2820',
+    info: '블록 6 — 역정규화 완료\n─────────────────────────\n수식: kW = ŷ × (max - min) + min\n     = 0.67 × (5.8 - 0.0) + 0.0\n     = 3.4 kW\n\n✅ 최종 예측 발전량:  3.4 kW\n\n실제 측정값:          3.2 kW\n오차 (MAE):          0.2 kW' },
+];
+
+const W=980, H=210, BW=128, BH=72, BY=58;
+const GAP = (W - BW*BLOCKS.length)/(BLOCKS.length+1);
+const BXS = BLOCKS.map((_,i) => GAP + i*(BW+GAP));
+const MY  = BY + BH/2;
+
+let timer=null;
+
+function ns(tag,attrs,txt){
+  const e=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  for(const[k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  if(txt!==undefined) e.textContent=txt;
+  return e;
+}
+
+function buildSVG(){
+  const svg=document.getElementById('sim-svg');
+  svg.innerHTML='';
+
+  // 마커
+  const defs=ns('defs',{});
+  const mk=ns('marker',{id:'arr',markerWidth:'8',markerHeight:'8',refX:'7',refY:'3',orient:'auto'});
+  mk.appendChild(ns('path',{d:'M0,0 L0,6 L8,3 z',fill:'#444'}));
+  defs.appendChild(mk);
+
+  // glow 필터
+  const fl=ns('filter',{id:'glow',x:'-50%',y:'-50%',width:'200%',height:'200%'});
+  const fb=ns('feGaussianBlur',{stdDeviation:'5',result:'cb'});
+  const fm=ns('feMerge',{});
+  fm.appendChild(ns('feMergeNode',{in:'cb'}));
+  fm.appendChild(ns('feMergeNode',{in:'SourceGraphic'}));
+  fl.appendChild(fb); fl.appendChild(fm);
+  defs.appendChild(fl);
+  svg.appendChild(defs);
+
+  // 화살표
+  for(let i=0;i<BLOCKS.length-1;i++){
+    svg.appendChild(ns('line',{
+      x1:BXS[i]+BW+2, y1:MY, x2:BXS[i+1]-4, y2:MY,
+      stroke:'#444','stroke-width':'2','marker-end':'url(#arr)',id:`ar${i}`
+    }));
+  }
+
+  // 블록
+  BLOCKS.forEach((b,i)=>{
+    const g=ns('g',{id:`bl${i}`,opacity:'0.35'});
+    g.appendChild(ns('rect',{x:BXS[i],y:BY,width:BW,height:BH,rx:'10',
+      fill:b.bg,stroke:b.c,'stroke-width':'2'}));
+    const lines=b.lbl.split('\n');
+    const cy=BY+BH/2-(lines.length-1)*9;
+    lines.forEach((ln,li)=>{
+      g.appendChild(ns('text',{x:BXS[i]+BW/2,y:cy+li*18,
+        'text-anchor':'middle',fill:'#cdd9e5','font-size':'12','font-weight':'600'},ln));
+    });
+    g.appendChild(ns('text',{x:BXS[i]+BW/2,y:BY+BH+18,
+      'text-anchor':'middle',fill:'#8b949e','font-size':'10'},b.sub));
+    g.appendChild(ns('text',{x:BXS[i]+7,y:BY+16,
+      fill:b.c,'font-size':'11','font-weight':'700'},`B${i+1}`));
+    svg.appendChild(g);
+  });
+
+  // 신호 원
+  svg.appendChild(ns('circle',{id:'sig',cx:BXS[0]+BW/2,cy:MY,
+    r:'10',fill:'#fff',opacity:'0',filter:'url(#glow)'}));
+}
+
+function setActive(idx,on){
+  const g=document.getElementById(`bl${idx}`);
+  if(!g) return;
+  g.setAttribute('opacity',on?'1':'0.35');
+  g.querySelector('rect').setAttribute('stroke-width',on?'3':'2');
+}
+
+function moveSig(x0,x1,dur,cb){
+  const sig=document.getElementById('sig');
+  sig.setAttribute('opacity','1');
+  const t0=performance.now();
+  (function step(now){
+    const p=Math.min((now-t0)/dur,1);
+    const e=p<.5?2*p*p:-1+(4-2*p)*p;
+    sig.setAttribute('cx',x0+(x1-x0)*e);
+    p<1?requestAnimationFrame(step):cb();
+  })(t0);
+}
+
+function showInfo(i){
+  document.getElementById('sig-title').textContent=
+    `▶  블록 ${i+1} / ${BLOCKS.length}  —  ${BLOCKS[i].lbl.replace('\n',' ')}`;
+  document.getElementById('sig-body').textContent=BLOCKS[i].info;
+}
+
+function runStep(i){
+  if(i>=BLOCKS.length){
+    document.getElementById('sig-title').textContent='✅ 시뮬레이션 완료 — 3초 후 반복';
+    document.getElementById('sig-body').textContent=
+      '기상 데이터 → MinMaxScaler → 시퀀스(35,8) → LSTM(64) → Dense(1) → 역정규화 → 예측 발전량';
+    timer=setTimeout(()=>{ timer=null; resetSim(); startSim(); },3000);
+    return;
+  }
+  if(i>0) setActive(i-1,false);
+  setActive(i,true);
+  const sig=document.getElementById('sig');
+  sig.setAttribute('fill',BLOCKS[i].c);
+  if(i===0){
+    sig.setAttribute('cx',BXS[0]+BW/2);
+    sig.setAttribute('opacity','1');
+    showInfo(0);
+    timer=setTimeout(()=>{ timer=null; runStep(1); },1600);
+  } else {
+    moveSig(BXS[i-1]+BW/2, BXS[i]+BW/2, 550, ()=>{
+      showInfo(i);
+      timer=setTimeout(()=>{ timer=null; runStep(i+1); },1600);
+    });
+  }
+}
+
+function startSim(){
+  if(timer!==null) return;
+  runStep(0);
+}
+function resetSim(){
+  if(timer!==null){ clearTimeout(timer); timer=null; }
+  buildSVG();
+  document.getElementById('sig-title').textContent='▶ 시뮬레이션 시작 버튼을 눌러주세요';
+  document.getElementById('sig-body').textContent='';
+}
+
+// ──────────────────────────────────────────
+// Chart.js
+// ──────────────────────────────────────────
+const CO = {
+  responsive:true,
+  plugins:{ legend:{ labels:{ color:'#8b949e', font:{ size:10 } } } },
+  scales:{
+    x:{ ticks:{ color:'#555', maxTicksLimit:8 }, grid:{ color:'#1c2128' } },
+    y:{ ticks:{ color:'#555' },                  grid:{ color:'#1c2128' } },
+  },
+  elements:{ point:{ radius:0 }, line:{ tension:0.35 } },
+  animation:{ duration:700 },
+};
+
+// 차트 1: 정규화 전/후
+new Chart(document.getElementById('c-norm'),{
+  type:'line',
+  data:{
+    labels: Array.from({length:72},(_,i)=>`${i}h`),
+    datasets:[
+      {label:'일사량 원본 (÷100)',   data:sRad.slice(0,72).map(v=>v/100),  borderColor:'#d29922',borderWidth:1.5,fill:false},
+      {label:'일사량 정규화 [0~1]',  data:srMM.s.slice(0,72),              borderColor:'#f5c518',borderWidth:1.5,borderDash:[4,2],fill:false},
+      {label:'발전량 원본 (kW)',     data:power.slice(0,72),               borderColor:'#58a6ff',borderWidth:1.5,fill:false},
+      {label:'발전량 정규화 [0~1]',  data:pwMM.s.slice(0,72),              borderColor:'#a5d6ff',borderWidth:1.5,borderDash:[4,2],fill:false},
+    ]
+  },
+  options:CO,
+});
+
+// 차트 2: 35-step 시퀀스
+const ss=100;
+new Chart(document.getElementById('c-seq'),{
+  type:'line',
+  data:{
+    labels: Array.from({length:SEQ},(_,i)=>`t-${SEQ-1-i}`),
+    datasets:[
+      {label:'발전량',data:pwMM.s.slice(ss,ss+SEQ),borderColor:'#58a6ff',borderWidth:2,fill:{target:'origin',above:'#58a6ff18'}},
+      {label:'일사량',data:srMM.s.slice(ss,ss+SEQ),borderColor:'#d29922',borderWidth:1.5,fill:false},
+      {label:'온도',  data:tpMM.s.slice(ss,ss+SEQ),borderColor:'#f85149',borderWidth:1.5,fill:false},
+    ]
+  },
+  options:CO,
+});
+
+// 차트 3: hidden state bar (합성)
+const hd=Array.from({length:16},()=>parseFloat((Math.random()*2-1).toFixed(3)));
+new Chart(document.getElementById('c-hidden'),{
+  type:'bar',
+  data:{
+    labels:Array.from({length:16},(_,i)=>`u${i+1}`),
+    datasets:[{
+      label:'h_t 활성화값',
+      data:hd,
+      backgroundColor:hd.map(v=>v>0?'#3fb95066':'#f8514966'),
+      borderColor:    hd.map(v=>v>0?'#3fb950'  :'#f85149'),
+      borderWidth:1,
+    }]
+  },
+  options:{...CO, scales:{
+    x:{ticks:{color:'#555',font:{size:9}},grid:{color:'#1c2128'}},
+    y:{ticks:{color:'#555'},grid:{color:'#1c2128'},min:-1,max:1},
+  }},
+});
+
+// 차트 4: 예측 vs 실제
+new Chart(document.getElementById('c-pred'),{
+  type:'line',
+  data:{
+    labels:Array.from({length:168},(_,i)=>`${i}h`),
+    datasets:[
+      {label:'실제 발전량 (kW)',data:power.slice(0,168),  borderColor:'#56d364',borderWidth:2,fill:false},
+      {label:'LSTM 예측 (kW)', data:predKw.slice(0,168), borderColor:'#f85149',borderWidth:1.5,borderDash:[5,3],fill:false},
+    ]
+  },
+  options:CO,
+});
+
+// ── 초기화
+buildSVG();
+</script>
+</body>
+</html>

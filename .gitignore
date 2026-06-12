@@ -25,9 +25,6 @@ venv/
 metrics_baseline.json
 weather_api_*.json
 
-# 별도 제출 파일
-lstm_block_sim.html
-
 # OS / 에디터
 .DS_Store
 Thumbs.db
